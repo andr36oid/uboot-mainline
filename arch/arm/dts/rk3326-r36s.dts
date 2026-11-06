@@ -1,0 +1,145 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * U-Boot control device tree for the R36S family (RK3326 handhelds).
+ *
+ * Only what every board of the family shares lives here. The board
+ * specific parts (panel, backlight, PMIC rails, LEDs) come from the
+ * screen DTB on the BOOT partition at run time, as with the vendor
+ * U-Boot (rg351mp-uboot.dtb, rg351v-uboot.dtb, rg351p-uboot.dtb).
+ */
+
+/dts-v1/;
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/pinctrl/rockchip.h>
+#include "rk3326.dtsi"
+
+/ {
+	model = "R36S family (RK3326)";
+	compatible = "gameconsole,r36s", "rockchip,rk3326";
+
+	aliases {
+		mmc0 = &emmc;
+		mmc1 = &sdmmc;
+	};
+
+	chosen {
+		stdout-path = "serial2:115200n8";
+	};
+};
+
+/*
+ * Built-in eMMC (some clones). Its pins (GPIO1_A0-A7, B1, B2) are button
+ * pins on boards without eMMC, so the node has no pinctrl: board code
+ * hands the pins to the eMMC only when it is used (vendor
+ * andr36oid_emmc_pins()).
+ */
+&emmc {
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+	bus-width = <8>;
+	cap-mmc-highspeed;
+	non-removable;
+	max-frequency = <26000000>;
+	status = "okay";
+};
+
+&i2c0 {
+	clock-frequency = <400000>;
+	i2c-scl-falling-time-ns = <16>;
+	i2c-scl-rising-time-ns = <280>;
+	status = "okay";
+
+	rk817: pmic@20 {
+		compatible = "rockchip,rk817";
+		reg = <0x20>;
+		#clock-cells = <1>;
+		clock-output-names = "rk808-clkout1", "xin32k";
+		system-power-controller;
+
+		/*
+		 * No constraints here on purpose: the rails differ between
+		 * clones, and like the vendor U-Boot we only set the ones the
+		 * screen DTB from BOOT asks for.
+		 */
+		regulators {
+			DCDC_REG1 {
+				regulator-name = "dcdc1";
+			};
+
+			DCDC_REG2 {
+				regulator-name = "dcdc2";
+			};
+
+			DCDC_REG3 {
+				regulator-name = "dcdc3";
+			};
+
+			DCDC_REG4 {
+				regulator-name = "dcdc4";
+			};
+
+			LDO_REG1 {
+				regulator-name = "ldo1";
+			};
+
+			LDO_REG2 {
+				regulator-name = "ldo2";
+			};
+
+			LDO_REG3 {
+				regulator-name = "ldo3";
+			};
+
+			LDO_REG4 {
+				regulator-name = "ldo4";
+			};
+
+			LDO_REG5 {
+				regulator-name = "ldo5";
+			};
+
+			LDO_REG6 {
+				regulator-name = "ldo6";
+			};
+
+			LDO_REG7 {
+				regulator-name = "ldo7";
+			};
+
+			LDO_REG8 {
+				regulator-name = "ldo8";
+			};
+
+			LDO_REG9 {
+				regulator-name = "ldo9";
+			};
+		};
+	};
+};
+
+&pwm0 {
+	status = "okay";
+};
+
+&pwm1 {
+	status = "okay";
+};
+
+&saradc {
+	vdd-microvolts = <1800000>;
+	status = "okay";
+};
+
+&sdmmc {
+	bus-width = <4>;
+	cap-mmc-highspeed;
+	cap-sd-highspeed;
+	cd-gpios = <&gpio0 RK_PA3 GPIO_ACTIVE_LOW>;
+	status = "okay";
+};
+
+&uart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart2m1_xfer>;
+	status = "okay";
+};

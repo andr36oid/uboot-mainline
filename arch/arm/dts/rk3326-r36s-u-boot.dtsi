@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+
+#include "rk3326-u-boot.dtsi"
+
+/ {
+	chosen {
+		/* SD card first like the boot ROM, then the built-in eMMC */
+		u-boot,spl-boot-order = "same-as-spl", &sdmmc, &emmc;
+	};
+};
+
+&emmc {
+	bootph-pre-ram;
+	bootph-some-ram;
+	u-boot,spl-fifo-mode;
+};
+
+&saradc {
+	bootph-some-ram;
+};

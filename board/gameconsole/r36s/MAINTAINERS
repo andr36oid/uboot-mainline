@@ -1,0 +1,8 @@
+R36S FAMILY (RK3326 HANDHELDS)
+M:	itskenny0 <0@kenny.cat>
+S:	Maintained
+F:	board/gameconsole/r36s/
+F:	include/configs/r36s.h
+F:	configs/r36s-rk3326_defconfig
+F:	arch/arm/dts/rk3326-r36s.dts
+F:	arch/arm/dts/rk3326-r36s-u-boot.dtsi
