@@ -5,6 +5,7 @@
 
 ifdef CONFIG_VIDEO_ROCKCHIP
 obj-y += rk_vop.o
+obj-$(CONFIG_ROCKCHIP_PX30) += px30_vop.o
 obj-$(CONFIG_ROCKCHIP_RK3288) += rk3288_vop.o
 obj-$(CONFIG_ROCKCHIP_RK3328) += rk3328_vop.o
 obj-$(CONFIG_ROCKCHIP_RK3399) += rk3399_vop.o
