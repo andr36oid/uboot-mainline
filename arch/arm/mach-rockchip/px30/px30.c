@@ -298,8 +298,12 @@ int arch_cpu_init(void)
 	/* Clear the force_jtag */
 	rk_clrreg(&grf->cpu_con[1], 1 << 7);
 
-	/* Make TSADC and WDT trigger a first global reset */
-	clrsetbits_le32(&cru->glb_rst_con, 0x3, 0x3);
+	/*
+	 * Make TSADC and WDT trigger a first global reset. The R36S family
+	 * keeps the reset default its vendor U-Boot left to the kernel.
+	 */
+	if (!IS_ENABLED(CONFIG_TARGET_R36S))
+		clrsetbits_le32(&cru->glb_rst_con, 0x3, 0x3);
 
 	return 0;
 }
