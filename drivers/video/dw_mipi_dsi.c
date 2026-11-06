@@ -467,9 +467,15 @@ static void dw_mipi_dsi_set_mode(struct dw_mipi_dsi *dsi,
 	dsi_write(dsi, DSI_PWR_UP, RESET);
 
 	if (mode_flags & MIPI_DSI_MODE_VIDEO) {
+		u32 lpclk = PHY_TXREQUESTCLKHS;
+
+		/* Let the controller stop the clock lane between transfers */
+		if (dsi->device->mode_flags & MIPI_DSI_CLOCK_NON_CONTINUOUS)
+			lpclk |= AUTO_CLKLANE_CTRL;
+
 		dsi_write(dsi, DSI_MODE_CFG, ENABLE_VIDEO_MODE);
 		dw_mipi_dsi_video_mode_config(dsi);
-		dsi_write(dsi, DSI_LPCLK_CTRL, PHY_TXREQUESTCLKHS);
+		dsi_write(dsi, DSI_LPCLK_CTRL, lpclk);
 	} else {
 		dsi_write(dsi, DSI_MODE_CFG, ENABLE_CMD_MODE);
 	}
