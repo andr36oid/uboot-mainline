@@ -218,6 +218,18 @@ static u16 r36s_trust_checksum(const u8 *buf, u16 len)
 	return ~sum;
 }
 
+/*
+ * An OP-TEE area as the trust image reserves it (30 MiB at 132 MiB): whole
+ * MiBs inside the RAM, above BL31. Anything else is stale memory, e.g. the
+ * kernel's after a warm reboot in the SPL chain, which has no OP-TEE.
+ */
+static bool r36s_optee_plausible(u64 base, u64 size)
+{
+	return size && size <= SZ_256M && !(base % SZ_1M) && !(size % SZ_1M) &&
+	       base >= CFG_SYS_SDRAM_BASE + SZ_2M &&
+	       base + size <= CFG_SYS_SDRAM_BASE + gd->ram_size;
+}
+
 static int r36s_optee_mem(u64 *base, u64 *size)
 {
 	const struct r36s_tos_param *tos;
@@ -229,15 +241,17 @@ static int r36s_optee_mem(u64 *base, u64 *size)
 	if (tag && len >= 28 && get_unaligned_le32(tag + 24) == 1) {
 		*base = get_unaligned_le64(tag + 12);
 		*size = get_unaligned_le32(tag + 20);
-		if (*size)
+		if (r36s_optee_plausible(*base, *size))
 			return 0;
 	}
 
+	/* The older trust parameter block at 34 MiB, with its checksum */
 	tos = (const struct r36s_tos_param *)(CFG_SYS_SDRAM_BASE + SZ_32M +
 					     SZ_2M);
-	if (tos->tee_mem.flags == 1 && tos->tee_mem.size &&
+	if (tos->tee_mem.flags == 1 &&
 	    tos->checksum == r36s_trust_checksum((const u8 *)tos + 8,
-						 sizeof(*tos) - 8)) {
+						 sizeof(*tos) - 8) &&
+	    r36s_optee_plausible(tos->tee_mem.phy_addr, tos->tee_mem.size)) {
 		*base = tos->tee_mem.phy_addr;
 		*size = tos->tee_mem.size;
 		return 0;
@@ -249,7 +263,8 @@ static int r36s_optee_mem(u64 *base, u64 *size)
 /*
  * Leave OP-TEE out of the memory U-Boot and the kernel use, as the vendor
  * does (dmesg shows 992 MiB on 1 GB consoles: 2 MiB BL31 + 30 MiB OP-TEE).
- * Called by dram_init_banksize() for both the ATAG and the fallback layout.
+ * dram_init_banksize() calls this after it set up the banks (on the PX30
+ * always its fallback layout: everything above the 2 MiB of BL31).
  */
 int rockchip_dram_init_banksize_fixup(struct bd_info *bd)
 {
