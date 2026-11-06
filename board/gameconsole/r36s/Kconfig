@@ -14,4 +14,14 @@ config BOARD_SPECIFIC_OPTIONS # dummy
 	select ADC
 	select BOARD_LATE_INIT
 
+config R36S_SERIAL
+	string "Serial number (serial#) to report"
+	default "c3d9b8674f4b94f6"
+	help
+	  The vendor U-Boot reports the same serial number on every console
+	  (an unseeded rand()), and the adb serial, the USB gadget serial and
+	  the R36 Ultra Wi-Fi MAC address follow it. Keep it to stay
+	  compatible. Leave empty to use the serial number made from the
+	  CPU id instead (different on every console).
+
 endif

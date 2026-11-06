@@ -10,6 +10,7 @@
 #include <asm/arch-rockchip/hardware.h>
 #include <dm.h>
 #include <log.h>
+#include <vsprintf.h>
 #include <linux/errno.h>
 #include "r36s.h"
 
@@ -26,7 +27,56 @@
 #define GRF_GPIO1B_E		0xf4
 #define GRF_IOFUNC_CON0		0x184
 
-#define GRF(off)		((void __iomem *)(GRF_BASE + (off)))
+#define GRF(off)		((void __iomem *)(ulong)(GRF_BASE + (off)))
+#define PMUGRF_BASE		0xff010000
+
+/*
+ * Mux a pin to its GPIO function. GPIO0 has 2-bit fields in the PMUGRF
+ * (8 pins per register), GPIO1-3 4-bit fields in the GRF (4 pins per
+ * register), as in the PX30 pinctrl driver.
+ */
+void r36s_pin_gpio(unsigned int bank, unsigned int pin)
+{
+	if (bank > 3 || pin > 31)
+		return;
+
+	if (!bank) {
+		writel(3 << (16 + (pin % 8) * 2),
+		       (void __iomem *)(ulong)(PMUGRF_BASE + (pin / 8) * 4));
+		return;
+	}
+
+	writel(0xf << (16 + (pin % 4) * 4),
+	       GRF((bank - 1) * 0x20 + (pin / 4) * 4));
+}
+
+/* Request a screen DTB GPIO by its rk_gpio name ("D16" = GPIO3_C0) */
+int r36s_gpio_request(const struct r36s_gpio *gpio, const char *label,
+		      ulong flags, struct gpio_desc *desc)
+{
+	char name[8];
+	int ret;
+
+	if (!gpio->valid)
+		return -ENOENT;
+
+	snprintf(name, sizeof(name), "%c%u", 'A' + gpio->bank, gpio->pin);
+	ret = dm_gpio_lookup_name(name, desc);
+	if (ret)
+		return ret;
+	ret = dm_gpio_request(desc, label);
+	if (ret)
+		return ret;
+
+	r36s_pin_gpio(gpio->bank, gpio->pin);
+	if (gpio->active_low)
+		flags |= GPIOD_ACTIVE_LOW;
+	ret = dm_gpio_set_dir_flags(desc, flags);
+	if (ret)
+		dm_gpio_free(desc->dev, desc);
+
+	return ret;
+}
 
 /* Drive a GPIO given as "<bank letter><pin>" (rk_gpio bank naming) */
 int r36s_gpio_out(const char *name, int value)
@@ -68,11 +118,14 @@ static void r36s_switch_pins(void)
 
 void r36s_board_pins(void)
 {
-	/* rumble motor off (GPIO0_B7), Wi-Fi enable on (GPIO3_B6) */
+	/*
+	 * Rumble motor off (GPIO0_B7), as the vendor does. The vendor also
+	 * drives GPIO3_B6 high as the ODROID-GO Wi-Fi enable; no console of
+	 * this family has Wi-Fi there, and on EE and Soy Sauce clones it is
+	 * a button, so that one is left alone.
+	 */
 	if (r36s_gpio_out("A15", 0))
 		log_warning("rumble GPIO0_B7 not set\n");
-	if (r36s_gpio_out("D14", 1))
-		log_warning("Wi-Fi enable GPIO3_B6 not set\n");
 
 	r36s_uart2_m1();
 	r36s_switch_pins();
