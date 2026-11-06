@@ -117,11 +117,30 @@
 	};
 };
 
-&pwm0 {
+/*
+ * Display: VOP big -> DSI host -> Inno video PHY. The panel node is a
+ * placeholder; panel, timing and backlight come from the screen DTB on
+ * BOOT (board/gameconsole/r36s/panel.c).
+ */
+&dsi {
+	status = "okay";
+
+	panel@0 {
+		compatible = "gameconsole,r36s-panel";
+		reg = <0>;
+	};
+};
+
+&dsi_dphy {
 	status = "okay";
 };
 
+/* Backlight PWM on every screen DTB of the family */
 &pwm1 {
+	status = "okay";
+};
+
+&vopb {
 	status = "okay";
 };
 
