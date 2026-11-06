@@ -133,6 +133,13 @@
 
 #define DW_MIPI_NEEDS_PHY_CFG_CLK	BIT(0)
 #define DW_MIPI_NEEDS_GRF_CLK		BIT(1)
+/* Feed the VOP big to the DSI host through the GRF lcdsel bit */
+#define DW_MIPI_SELECT_VOP_BIG		BIT(2)
+/*
+ * Rockchip BSP lane rate: pixel clock x bpp / lanes x 10/9, and the host
+ * timing from the rate the PHY PLL really runs at (PX30 vendor U-Boot)
+ */
+#define DW_MIPI_BSP_LANE_RATE		BIT(3)
 
 #define RK3399_GRF_SOC_CON20		0x6250
 #define RK3399_DSI0_LCDC_SEL		BIT(0)
@@ -173,6 +180,12 @@
 #define RK3568_DSI1_FORCETXSTOPMODE	(0xf << 4)
 #define RK3568_DSI1_TURNDISABLE		BIT(2)
 #define RK3568_DSI1_FORCERXMODE		BIT(0)
+
+#define PX30_GRF_PD_VO_CON1		0x0438
+#define PX30_DSI_FORCETXSTOPMODE	(0xf << 7)
+#define PX30_DSI_FORCERXMODE		BIT(6)
+#define PX30_DSI_TURNDISABLE		BIT(5)
+#define PX30_DSI_LCDC_SEL		BIT(0)
 
 #define HIWORD_UPDATE(val, mask)	(val | (mask) << 16)
 
@@ -518,6 +531,38 @@ static void dsi_phy_post_set_mode(void *priv_data, unsigned long mode_flags)
 		dsi_clear(dsi, DSI_WCR, WCR_DSIEN);
 }
 
+/*
+ * The rate the Inno video PHY PLL really produces for a requested lane rate
+ * (same search as phy-rockchip-inno-dsidphy.c with its 24 MHz reference):
+ * the vendor U-Boot times the DSI host from this rate.
+ */
+static unsigned long dw_mipi_dsi_inno_pll_rate(unsigned long rate)
+{
+	const unsigned long fref = 24000000 / 2;
+	unsigned long best = 0, fout = min(rate, 1000000000UL);
+	unsigned long min_delta = ULONG_MAX;
+	unsigned int prediv;
+
+	for (prediv = DIV_ROUND_UP(fref, 40000000); prediv <= fref / 5000000;
+	     prediv++) {
+		unsigned long fbdiv = (u64)fout * prediv / fref;
+		unsigned long out, delta;
+
+		if (fbdiv == 15 || fbdiv < 12 || fbdiv > 511)
+			continue;
+		out = (u64)fbdiv * fref / prediv;
+		delta = fout > out ? fout - out : out - fout;
+		if (delta < min_delta) {
+			best = out;
+			min_delta = delta;
+			if (!delta)
+				break;
+		}
+	}
+
+	return best;
+}
+
 static int
 dw_mipi_dsi_get_lane_mbps(void *priv_data, struct display_timing *timings,
 			  u32 lanes, u32 format, unsigned int *lane_mbps)
@@ -556,6 +601,21 @@ dw_mipi_dsi_get_lane_mbps(void *priv_data, struct display_timing *timings,
 	}
 
 	/* for external phy only the mipi_dphy_config is necessary */
+	if (generic_phy_valid(&dsi->phy) &&
+	    (dsi->cdata->flags & DW_MIPI_BSP_LANE_RATE)) {
+		unsigned long rate;
+
+		phy_mipi_dphy_get_default_config((u64)timings->pixelclock.typ * 10 / 9,
+						 bpp, lanes, &dsi->phy_opts);
+		rate = dw_mipi_dsi_inno_pll_rate(dsi->phy_opts.hs_clk_rate);
+		if (!rate)
+			rate = dsi->phy_opts.hs_clk_rate;
+		dsi->lane_mbps = DIV_ROUND_UP(rate, USEC_PER_SEC);
+		*lane_mbps = dsi->lane_mbps;
+
+		return 0;
+	}
+
 	if (generic_phy_valid(&dsi->phy)) {
 		phy_mipi_dphy_get_default_config(timings->pixelclock.typ  * 10 / 8,
 						 bpp, lanes,
@@ -789,6 +849,11 @@ static void dw_mipi_dsi_rockchip_config(struct dw_rockchip_dsi_priv *dsi)
 
 	if (dsi->cdata->enable_grf_reg)
 		rk_setreg(dsi->grf + dsi->cdata->enable_grf_reg, dsi->cdata->enable);
+
+	if ((dsi->cdata->flags & DW_MIPI_SELECT_VOP_BIG) &&
+	    dsi->cdata->lcdsel_grf_reg)
+		rk_setreg(dsi->grf + dsi->cdata->lcdsel_grf_reg,
+			  dsi->cdata->lcdsel_big);
 }
 
 static int dw_mipi_dsi_rockchip_bind(struct udevice *dev)
@@ -911,6 +976,25 @@ struct video_bridge_ops dw_mipi_dsi_rockchip_ops = {
 	.set_backlight = dw_mipi_dsi_rockchip_set_bl,
 };
 
+static const struct rockchip_dw_dsi_chip_data px30_chip_data[] = {
+	{
+		.reg = 0xff450000,
+		.lcdsel_grf_reg = PX30_GRF_PD_VO_CON1,
+		.lcdsel_big = HIWORD_UPDATE(0, PX30_DSI_LCDC_SEL),
+		.lcdsel_lit = HIWORD_UPDATE(PX30_DSI_LCDC_SEL,
+					    PX30_DSI_LCDC_SEL),
+
+		.lanecfg1_grf_reg = PX30_GRF_PD_VO_CON1,
+		.lanecfg1 = HIWORD_UPDATE(0, PX30_DSI_TURNDISABLE |
+					     PX30_DSI_FORCERXMODE |
+					     PX30_DSI_FORCETXSTOPMODE),
+
+		.flags = DW_MIPI_SELECT_VOP_BIG | DW_MIPI_BSP_LANE_RATE,
+		.max_data_lanes = 4,
+	},
+	{ /* sentinel */ }
+};
+
 static const struct rockchip_dw_dsi_chip_data rk3399_chip_data[] = {
 	{
 		.reg = 0xff960000,
@@ -980,6 +1064,9 @@ static const struct rockchip_dw_dsi_chip_data rk3568_chip_data[] = {
 };
 
 static const struct udevice_id dw_mipi_dsi_rockchip_dt_ids[] = {
+	{ .compatible = "rockchip,px30-mipi-dsi",
+	  .data = (long)&px30_chip_data,
+	},
 	{ .compatible = "rockchip,rk3399-mipi-dsi",
 	  .data = (long)&rk3399_chip_data,
 	},
