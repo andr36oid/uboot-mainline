@@ -6,4 +6,6 @@ obj-y	+= r36s.o
 obj-y	+= pins.o
 obj-y	+= cfgload.o
 obj-y	+= log.o
+obj-y	+= screen-parse.o
+obj-y	+= screen.o
 endif
