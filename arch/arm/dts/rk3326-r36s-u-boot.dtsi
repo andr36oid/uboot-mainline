@@ -5,7 +5,7 @@
 / {
 	chosen {
 		/* SD card first like the boot ROM, then the built-in eMMC */
-		u-boot,spl-boot-order = "same-as-spl", &sdmmc, &emmc;
+		u-boot,spl-boot-order = &sdmmc, &emmc;
 	};
 };
 
