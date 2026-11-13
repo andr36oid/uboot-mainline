@@ -222,8 +222,11 @@ static void r36s_leds(void)
 {
 	const struct r36s_screen *scr = r36s_screen_get();
 
-	/* GPIO0_B5: charge LED, unless the panel uses it as its enable pin */
-	if (!scr || !scr->charge_led_is_enable)
+	/*
+	 * GPIO0_B5: charge LED, unless the panel uses it as its enable pin.
+	 * Without a screen description nobody knows which it is: leave it.
+	 */
+	if (scr && !scr->charge_led_is_enable)
 		r36s_gpio_out("A13", 0);
 	/* GPIO0_C2: power LED on */
 	r36s_gpio_out("A18", 1);
