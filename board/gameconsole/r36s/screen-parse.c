@@ -158,6 +158,35 @@ static int prop_rail(const void *fdt, int node, const char *name)
 	return R36S_RAIL_NONE;
 }
 
+/*
+ * A supply that is a pin-switched regulator ("regulator-fixed" with a gpio)
+ * instead of an RK817 rail: some loader DTBs feed the panel that way. The
+ * pin becomes the panel's enable pin unless the panel names one itself, and
+ * the rail behind the switch, if it is an RK817 one, is returned.
+ */
+static int prop_switched_supply(const void *fdt, int node, const char *name,
+				struct r36s_gpio *enable)
+{
+	struct r36s_gpio pin;
+	int reg;
+
+	reg = node_by_phandle_prop(fdt, node, name);
+	if (reg < 0)
+		return R36S_RAIL_NONE;
+
+	prop_gpio(fdt, reg, "gpio", &pin);
+	if (!pin.valid)
+		prop_gpio(fdt, reg, "gpios", &pin);
+	if (pin.valid && !enable->valid) {
+		/* the fixed-regulator binding ignores the flags cell */
+		pin.active_low = !fdt_getprop(fdt, reg, "enable-active-high",
+					      NULL);
+		*enable = pin;
+	}
+
+	return prop_rail(fdt, reg, "vin-supply");
+}
+
 static int find_okay_compatible(const void *fdt, const char *compat)
 {
 	int node, first = -FDT_ERR_NOTFOUND;
@@ -265,6 +294,9 @@ static void parse_panel(const void *fdt, struct r36s_screen *scr)
 	prop_gpio(fdt, node, "reset-gpios", &p->reset);
 	prop_gpio(fdt, node, "enable-gpios", &p->enable);
 	p->power_rail = prop_rail(fdt, node, "power-supply");
+	if (p->power_rail == R36S_RAIL_NONE)
+		p->power_rail = prop_switched_supply(fdt, node, "power-supply",
+						     &p->enable);
 	p->backlight_rail = prop_rail(fdt, node, "backlight-supply");
 
 	seq = fdt_getprop(fdt, node, "panel-init-sequence", &len);
