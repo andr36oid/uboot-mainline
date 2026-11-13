@@ -1,0 +1,74 @@
+name: Build
+
+on:
+  push:
+    branches: [andr36oid]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu make bison flex bc swig curl git \
+            python3 python3-dev python3-setuptools python3-pyelftools \
+            libssl-dev uuid-dev libgnutls28-dev device-tree-compiler
+
+      - name: Build both flavours
+        run: OUT="$RUNNER_TEMP/out" andr36oid/build.sh all
+
+      - name: Name the release
+        id: name
+        run: |
+          stamp=$(date -u +%Y%m%d-%H%M)
+          echo "tag=$stamp" >> "$GITHUB_OUTPUT"
+          echo "short=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+          cd andr36oid/dist
+          sha256sum idbloader.img u-boot.itb u-boot-rockchip.bin uboot.img > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.name.outputs.tag }}
+          SHORT: ${{ steps.name.outputs.short }}
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<NOTES
+          Built from commit $GITHUB_SHA.
+
+          Work in progress. Tried on an R36 Ultra only. A wrong bootloader can leave a console
+          unable to start from this card until the card is rewritten on a computer, so keep a
+          copy of what you replace.
+
+          Two ways to install, both on the SD card (512-byte sectors):
+
+          **Classic** (only U-Boot changes; the card's first-stage loader and trust image stay):
+          - \`uboot.img\` at sector 16384
+
+          **Mainline** (replaces the first-stage loader as well; the trust image is no longer used):
+          - \`idbloader.img\` at sector 64
+          - \`u-boot.itb\` at sector 16384
+          - or \`u-boot-rockchip.bin\` at sector 64, which holds both
+
+          \`SHA256SUMS\` lists the checksums of all four files.
+          NOTES
+          sed -i 's/^          //' "$RUNNER_TEMP/notes.md"
+          cd andr36oid/dist
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "U-Boot 2026.10-andr36oid-itskenny0, $TAG ($SHORT)" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            idbloader.img u-boot.itb u-boot-rockchip.bin uboot.img SHA256SUMS
