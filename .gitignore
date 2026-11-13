@@ -142,3 +142,7 @@ __pycache__
 
 # Clang's compilation database file
 /compile_commands.json
+
+# andr36oid build: fetched firmware parts and build output
+/andr36oid/blobs/
+/andr36oid/dist/
